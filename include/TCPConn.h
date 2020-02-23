@@ -16,7 +16,7 @@ public:
    ~TCPConn();
 
    // The current status of the connection
-   enum statustype { s_none, s_connecting, s_connected, s_datatx, s_datarx, s_waitack, s_hasdata };
+   enum statustype { s_none, s_connecting, s_auth2, s_auth3, s_connected, s_datatx, s_datarx, s_waitack, s_hasdata };
 
    statustype getStatus() { return _status; };
 
@@ -75,6 +75,8 @@ protected:
    void transmitData();
    void waitForData();
    void awaitAck();
+   void verifyRemote();
+   void verifySelf();
 
    // Looks for commands in the data stream
    std::vector<uint8_t>::iterator findCmd(std::vector<uint8_t> &buf,
@@ -102,9 +104,13 @@ private:
  
    std::string _node_id; // The username this connection is associated with
    std::string _svr_id;  // The server ID that hosts this connection object
+   
 
    // Store incoming data to be read by the queue manager
    std::vector<uint8_t> _inputbuf;
+   //Keep track of our challenge string
+   std::vector<uint8_t>localChallenge;
+
    bool _data_ready;    // Is the input buffer full and data ready to be read?
 
    // Store outgoing data to be sent over the network

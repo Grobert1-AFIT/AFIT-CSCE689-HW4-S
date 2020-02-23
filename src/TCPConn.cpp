@@ -172,14 +172,24 @@ void TCPConn::handleConnection() {
    try {
       switch (_status) {
 
-         // Client: Just connected, send our SID
+         // Client: Just connected, send our SID (A)
          case s_connecting:
             sendSID();
             break;
 
-         // Server: Wait for the SID from a newly-connected client, then send our SID
+         // Server: Wait for the SID from a newly-connected client, then send our SID and challenge string (Rb)
          case s_connected:
             waitForSID();
+            break;
+
+         // Client: Encrypt and return challenge string, send our own challenge string (Ka,b(Rb) + Ra)
+         case s_auth2:
+            verifySelf();
+            break;
+
+         // Server: Wait for encrypted challenge string and client challenge string, encrypt client string and return (Ka,b(Ra))
+         case s_auth3:
+            verifyRemote();
             break;
    
          // Client: connecting user - replicate data
@@ -213,6 +223,92 @@ void TCPConn::handleConnection() {
 
 }
 
+//Incoming data should be 16 byte remote challenge string
+void TCPConn::verifySelf() {
+   if (_connfd.hasData()) {\
+      std::vector<uint8_t> buf;
+
+      if (!getData(buf))
+         return;
+
+      //Buffer
+      if (!getCmdData(buf, c_auth, c_endauth)) {
+         std::stringstream msg;
+         msg << "Invalid authentication message format.";
+         _server_log.writeLog(msg.str().c_str());
+         disconnect();
+         return;
+      }
+
+
+      std::vector<uint8_t> response;
+
+
+      //Send back our challenge string followed by encrypted callenge string
+      //Generate our challenge string
+      localChallenge.reserve(16);
+      OS_GenerateRandomBlock(false, static_cast<byte *>(&localChallenge[0]), 16);
+      response.insert(response.begin(), localChallenge.begin(), localChallenge.end());
+
+      //Encrypt the remote string
+      encryptData(buf);
+
+      //Build our response and send
+      response.insert(response.end(), buf.begin(), buf.end());
+      wrapCmd(response, c_auth, c_endauth);
+      sendData(response);
+      _status = s_datarx;
+   }
+}
+
+
+//Incoming data should be 16 byte remote challenge string followed by encrypted local challenge string 
+void TCPConn::verifyRemote() {
+   if (_connfd.hasData()) {\
+      std::vector<uint8_t> buf;
+
+      if (!getData(buf))
+         return;
+
+      //Buffer
+      if (!getCmdData(buf, c_auth, c_endauth)) {
+         std::stringstream msg;
+         msg << "Invalid authentication message format.";
+         _server_log.writeLog(msg.str().c_str());
+         disconnect();
+         return;
+      }
+
+
+      std::vector<uint8_t> response;
+
+      //Read the challenge string and response
+      std::vector<uint8_t>remoteChallenge;
+      std::vector<uint8_t>returnedChallenge;
+      remoteChallenge.insert(remoteChallenge.begin(), buf.begin(), buf.begin() + 16);
+      returnedChallenge.insert(returnedChallenge.begin(), buf.begin() + 16, buf.end());
+
+      //Compare response to sent challenge
+      decryptData(returnedChallenge);
+      if (returnedChallenge != localChallenge) {
+         std::stringstream msg;
+         msg << "Incorrect Challenge String.";
+         _server_log.writeLog(msg.str().c_str());
+         disconnect();
+         return;
+      }
+
+
+      //Send back encrypted callenge string
+      //buf.assign(_svr_id.begin(), _svr_id.end());
+      encryptData(remoteChallenge);
+      wrapCmd(remoteChallenge, c_auth, c_endauth);
+      sendData(remoteChallenge);
+
+      _status = s_datarx;
+   }
+}
+
 /**********************************************************************************************
  * sendSID()  - Client: after a connection, client sends its Server ID to the server
  *
@@ -224,7 +320,7 @@ void TCPConn::sendSID() {
    wrapCmd(buf, c_sid, c_endsid);
    sendData(buf);
 
-   _status = s_datatx; 
+   _status = s_auth2; 
 }
 
 /**********************************************************************************************
@@ -232,12 +328,19 @@ void TCPConn::sendSID() {
  *
  *    Throws: socket_error for network issues, runtime_error for unrecoverable issues
  **********************************************************************************************/
+/*
+      std::vector<uint8_t>remoteChallenge; 
+
+      //Read the first 16bytes into remote challenge string field
+      std::copy(buf.begin(), buf.begin() + 16, std::back_inserter(remoteChallenge));
+*/
 
 void TCPConn::waitForSID() {
 
-   // If data on the socket, should be our Auth string from our host server
-   if (_connfd.hasData()) {
+   //Wait for the SID from a newly-connected client, send our challenge string (Rb)
+   if (_connfd.hasData()) {\
       std::vector<uint8_t> buf;
+
 
       if (!getData(buf))
          return;
@@ -250,15 +353,17 @@ void TCPConn::waitForSID() {
          return;
       }
 
+      //Read the remoteID into NodeID (Rest of buffer)
       std::string node(buf.begin(), buf.end());
       setNodeID(node.c_str());
 
-      // Send our Node ID
-      buf.assign(_svr_id.begin(), _svr_id.end());
-      wrapCmd(buf, c_sid, c_endsid);
-      sendData(buf);
+      //Generate our challenge string and send to client
+      localChallenge.reserve(16);
+      OS_GenerateRandomBlock(false, static_cast<byte *>(&localChallenge[0]), 16);
+      wrapCmd(localChallenge, c_auth, c_endauth);
+      sendData(localChallenge);
 
-      _status = s_datarx;
+      _status = s_auth3;
    }
 }
 
@@ -278,16 +383,32 @@ void TCPConn::transmitData() {
       if (!getData(buf))
          return;
 
-      if (!getCmdData(buf, c_sid, c_endsid)) {
+      if (!getCmdData(buf, c_auth, c_endauth)) {
          std::stringstream msg;
-         msg << "SID string from connected server invalid format. Cannot authenticate.";
+         msg << "Authentication message from connected server invalid format. Cannot authenticate.";
          _server_log.writeLog(msg.str().c_str());
          disconnect();
          return;
       }
 
-      std::string node(buf.begin(), buf.end());
+      //Break response into SID and encrypted string
+      std::string node(buf.begin(), buf.begin() + 3);
       setNodeID(node.c_str());
+      
+
+      //Compare response to sent challenge
+      std::vector<uint8_t> remoteChallenge;
+      remoteChallenge.insert(remoteChallenge.begin(), buf.begin() + 3, buf.end());
+      decryptData(remoteChallenge);
+      if (remoteChallenge != localChallenge) {
+         std::stringstream msg;
+         msg << "Incorrect Challenge String.";
+         _server_log.writeLog(msg.str().c_str());
+         disconnect();
+         return;
+      }
+
+
 
       // Send the replication data
       sendData(_outputbuf);
