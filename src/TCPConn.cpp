@@ -246,7 +246,7 @@ void TCPConn::verifySelf() {
 
       //Send back our challenge string followed by encrypted callenge string
       //Generate our challenge string
-      localChallenge.reserve(16);
+      localChallenge.resize(16);
       OS_GenerateRandomBlock(false, static_cast<byte *>(&localChallenge[0]), 16);
       response.insert(response.begin(), localChallenge.begin(), localChallenge.end());
 
@@ -282,10 +282,12 @@ void TCPConn::verifyRemote() {
 
       std::vector<uint8_t> response;
 
-      //Read the challenge string and response
+      //Read the challenge string (first 16 bytes) and encrypted response (rest of the buffer)
       std::vector<uint8_t>remoteChallenge;
       std::vector<uint8_t>returnedChallenge;
+      //First 16 bytes
       remoteChallenge.insert(remoteChallenge.begin(), buf.begin(), buf.begin() + 16);
+      //Rest of buffer
       returnedChallenge.insert(returnedChallenge.begin(), buf.begin() + 16, buf.end());
 
       //Compare response to sent challenge
@@ -358,11 +360,10 @@ void TCPConn::waitForSID() {
       setNodeID(node.c_str());
 
       //Generate our challenge string and send to client
-      localChallenge.reserve(16);
+      localChallenge.resize(16);
       OS_GenerateRandomBlock(false, static_cast<byte *>(&localChallenge[0]), 16);
       wrapCmd(localChallenge, c_auth, c_endauth);
       sendData(localChallenge);
-
       _status = s_auth3;
    }
 }
