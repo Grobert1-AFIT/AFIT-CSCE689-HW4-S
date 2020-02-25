@@ -25,6 +25,7 @@ public:
    // Main replication loop, continues until _shutdown is set
    void replicate(const char *ip_addr, unsigned short port);
    void replicate();
+   void removeDuplicates();
   
    // Call this to shutdown the loop 
    void shutdown();
@@ -34,6 +35,12 @@ public:
    time_t getAdjustedTime();
 
 private:
+
+   //Server Time Offset
+   float svrOffset = 0;
+
+   //What server is the authoritative time?
+   int masterSvr = 1;
 
    void addReplDronePlots(std::vector<uint8_t> &data);
    void addSingleDronePlot(std::vector<uint8_t> &data);

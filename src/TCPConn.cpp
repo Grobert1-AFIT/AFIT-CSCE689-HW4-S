@@ -210,7 +210,7 @@ void TCPConn::handleConnection() {
          // Server: Data received and conn disconnected, but waiting for the data to be retrieved
          case s_hasdata:
             break;
-
+               
          default:
             throw std::runtime_error("Invalid connection status!");
             break;
@@ -243,13 +243,12 @@ void TCPConn::verifySelf() {
 
       std::vector<uint8_t> response;
 
-
       //Send back our challenge string followed by encrypted callenge string
       //Generate our challenge string
       localChallenge.resize(16);
       OS_GenerateRandomBlock(false, static_cast<byte *>(&localChallenge[0]), 16);
-      response.insert(response.begin(), localChallenge.begin(), localChallenge.end());
-
+      response.insert(response.end(), localChallenge.begin(), localChallenge.end());
+      
       //Encrypt the remote string
       encryptData(buf);
 
@@ -257,7 +256,7 @@ void TCPConn::verifySelf() {
       response.insert(response.end(), buf.begin(), buf.end());
       wrapCmd(response, c_auth, c_endauth);
       sendData(response);
-      _status = s_datarx;
+      _status = s_datatx;
    }
 }
 
@@ -280,18 +279,20 @@ void TCPConn::verifyRemote() {
       }
 
 
-      std::vector<uint8_t> response;
 
       //Read the challenge string (first 16 bytes) and encrypted response (rest of the buffer)
       std::vector<uint8_t>remoteChallenge;
       std::vector<uint8_t>returnedChallenge;
+
       //First 16 bytes
-      remoteChallenge.insert(remoteChallenge.begin(), buf.begin(), buf.begin() + 16);
+      remoteChallenge.insert(remoteChallenge.end(), buf.begin(), buf.begin() + 16);
       //Rest of buffer
-      returnedChallenge.insert(returnedChallenge.begin(), buf.begin() + 16, buf.end());
+      returnedChallenge.insert(returnedChallenge.end(), buf.begin() + 16, buf.end());
+
 
       //Compare response to sent challenge
       decryptData(returnedChallenge);
+
       if (returnedChallenge != localChallenge) {
          std::stringstream msg;
          msg << "Incorrect Challenge String.";
@@ -300,10 +301,12 @@ void TCPConn::verifyRemote() {
          return;
       }
 
-
       //Send back encrypted callenge string
-      //buf.assign(_svr_id.begin(), _svr_id.end());
+
+      //Encrypt challenge string
       encryptData(remoteChallenge);
+
+      //Send
       wrapCmd(remoteChallenge, c_auth, c_endauth);
       sendData(remoteChallenge);
 
@@ -362,8 +365,10 @@ void TCPConn::waitForSID() {
       //Generate our challenge string and send to client
       localChallenge.resize(16);
       OS_GenerateRandomBlock(false, static_cast<byte *>(&localChallenge[0]), 16);
-      wrapCmd(localChallenge, c_auth, c_endauth);
-      sendData(localChallenge);
+      std::vector<uint8_t> response;
+      response.insert(response.end(), localChallenge.begin(), localChallenge.end());
+      wrapCmd(response, c_auth, c_endauth);
+      sendData(response);
       _status = s_auth3;
    }
 }
@@ -392,15 +397,11 @@ void TCPConn::transmitData() {
          return;
       }
 
-      //Break response into SID and encrypted string
-      std::string node(buf.begin(), buf.begin() + 3);
-      setNodeID(node.c_str());
-      
-
       //Compare response to sent challenge
       std::vector<uint8_t> remoteChallenge;
-      remoteChallenge.insert(remoteChallenge.begin(), buf.begin() + 3, buf.end());
+      remoteChallenge.insert(remoteChallenge.end(), buf.begin(), buf.end());
       decryptData(remoteChallenge);
+
       if (remoteChallenge != localChallenge) {
          std::stringstream msg;
          msg << "Incorrect Challenge String.";
@@ -412,7 +413,7 @@ void TCPConn::transmitData() {
 
 
       // Send the replication data
-      sendData(_outputbuf);
+      sendEncryptedData(_outputbuf);
 
       if (_verbosity >= 3)
          std::cout << "Successfully authenticated connection with " << getNodeID() <<
@@ -437,7 +438,7 @@ void TCPConn::waitForData() {
    if (_connfd.hasData()) {
       std::vector<uint8_t> buf;
 
-      if (!getData(buf))
+      if (!getEncryptedData(buf))
          return;
 
       if (!getCmdData(buf, c_rep, c_endrep)) {
@@ -453,7 +454,7 @@ void TCPConn::waitForData() {
       _data_ready = true;
 
       // Send the acknowledgement and disconnect
-      sendData(c_ack);
+      sendEncryptedData(c_ack);
 
       if (_verbosity >= 2)
          std::cout << "Successfully received replication data from " << getNodeID() << "\n";
@@ -477,7 +478,7 @@ void TCPConn::awaitAck() {
    if (_connfd.hasData()) {
       std::vector<uint8_t> buf;
 
-      if (!getData(buf))
+      if (!getEncryptedData(buf))
          return;
 
       if (findCmd(buf, c_ack) == buf.end())

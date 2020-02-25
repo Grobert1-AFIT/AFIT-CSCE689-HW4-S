@@ -202,6 +202,8 @@ void ReplServer::addReplDronePlots(std::vector<uint8_t> &data) {
       addSingleDronePlot(plot);
       dptr += DronePlot::getDataSize();      
    }
+   removeDuplicates();
+
    if (_verbosity >= 2)
       std::cout << "Replicated in " << count << " plots\n";   
 }
@@ -217,8 +219,49 @@ void ReplServer::addSingleDronePlot(std::vector<uint8_t> &data) {
 
    tmp_plot.deserialize(data);
 
-   _plotdb.addPlot(tmp_plot.drone_id, tmp_plot.node_id, tmp_plot.timestamp, tmp_plot.latitude,
-                                                         tmp_plot.longitude);
+   //Need to check for duplicate points before adding
+   for (auto & element : _plotdb) {
+      if (element.latitude == tmp_plot.latitude && element.longitude == tmp_plot.longitude && element.drone_id == tmp_plot.drone_id) {
+         //Compare times
+         auto timeDif = element.timestamp - tmp_plot.timestamp;
+         std::cout << "Found Duplicate Points\n";
+         //Duplicate Plots, update time differential
+         if (timeDif < 10.0) {
+            std::cout << "Not adding duplicate\n";
+            if (tmp_plot.node_id == masterSvr) {
+               std::cout << "Updating Time Differential";
+               svrOffset = timeDif;
+            }
+            return;
+         }
+         //Same location but too large an offset to be duplicate
+         else {
+               std::cout << "Adding because too large a time difference\n";
+               _plotdb.addPlot(tmp_plot.drone_id, tmp_plot.node_id, tmp_plot.timestamp + svrOffset, tmp_plot.latitude, tmp_plot.longitude);
+         }
+      }
+   }
+
+   //Add the replication point if it isn't a possible duplicate
+   _plotdb.addPlot(tmp_plot.drone_id, tmp_plot.node_id, tmp_plot.timestamp + svrOffset, tmp_plot.latitude, tmp_plot.longitude);
+}
+
+
+void ReplServer::removeDuplicates() {
+   auto out = _plotdb.begin();
+   int innerLoc = 1;
+   while (out != _plotdb.end()) {
+      auto in = _plotdb.begin();
+      advance(in, innerLoc);
+      while (in != _plotdb.end()) {
+         if (out->latitude == in->latitude && out->longitude == in->longitude && out->drone_id == in->drone_id) {
+            _plotdb.erase(in);
+         }
+         in++;
+      }
+   out++;
+   innerLoc +=1;
+   }
 }
 
 
