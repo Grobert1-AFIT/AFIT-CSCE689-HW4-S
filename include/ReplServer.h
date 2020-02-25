@@ -34,13 +34,17 @@ public:
    // attempts to check "simulator time" should use this function
    time_t getAdjustedTime();
 
+   //Server time offset
+   int getOffset(int);
+   void updateOffset(int, long);
+   void updatedbTimes();
+
 private:
 
-   //Server Time Offset
-   float svrOffset = 0;
+   std::vector<int> timeDiffs = {0,0,0};
 
    //What server is the authoritative time?
-   int masterSvr = 1;
+   int masterNode = 1;
 
    void addReplDronePlots(std::vector<uint8_t> &data);
    void addSingleDronePlot(std::vector<uint8_t> &data);

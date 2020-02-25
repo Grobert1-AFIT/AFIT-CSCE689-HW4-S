@@ -167,6 +167,8 @@ unsigned int ReplServer::queueNewPlots() {
    if (_verbosity >= 2) 
       std::cout << "Queued up " << count << " plots to be replicated.\n";
 
+   removeDuplicates();
+
    return count;
 }
 
@@ -202,7 +204,6 @@ void ReplServer::addReplDronePlots(std::vector<uint8_t> &data) {
       addSingleDronePlot(plot);
       dptr += DronePlot::getDataSize();      
    }
-   removeDuplicates();
 
    if (_verbosity >= 2)
       std::cout << "Replicated in " << count << " plots\n";   
@@ -224,47 +225,61 @@ void ReplServer::addSingleDronePlot(std::vector<uint8_t> &data) {
       if (element.latitude == tmp_plot.latitude && element.longitude == tmp_plot.longitude && element.drone_id == tmp_plot.drone_id) {
          //Compare times
          auto timeDif = element.timestamp - tmp_plot.timestamp;
-         std::cout << "Found Duplicate Points\n";
          //Duplicate Plots, update time differential
          if (timeDif < 10.0) {
-            std::cout << "Not adding duplicate\n";
-            if (tmp_plot.node_id == masterSvr) {
+            if (tmp_plot.node_id == masterNode) {
                std::cout << "Updating Time Differential";
-               svrOffset = timeDif;
+               updateOffset(element.node_id, timeDif);
             }
             return;
          }
          //Same location but too large an offset to be duplicate
          else {
                std::cout << "Adding because too large a time difference\n";
-               _plotdb.addPlot(tmp_plot.drone_id, tmp_plot.node_id, tmp_plot.timestamp + svrOffset, tmp_plot.latitude, tmp_plot.longitude);
+               _plotdb.addPlot(tmp_plot.drone_id, tmp_plot.node_id, tmp_plot.timestamp, tmp_plot.latitude, tmp_plot.longitude);
          }
       }
    }
 
    //Add the replication point if it isn't a possible duplicate
-   _plotdb.addPlot(tmp_plot.drone_id, tmp_plot.node_id, tmp_plot.timestamp + svrOffset, tmp_plot.latitude, tmp_plot.longitude);
+   _plotdb.addPlot(tmp_plot.drone_id, tmp_plot.node_id, tmp_plot.timestamp, tmp_plot.latitude, tmp_plot.longitude);
 }
 
 
 void ReplServer::removeDuplicates() {
-   auto out = _plotdb.begin();
-   int innerLoc = 1;
-   while (out != _plotdb.end()) {
-      auto in = _plotdb.begin();
-      advance(in, innerLoc);
-      while (in != _plotdb.end()) {
-         if (out->latitude == in->latitude && out->longitude == in->longitude && out->drone_id == in->drone_id) {
-            _plotdb.erase(in);
+   auto outer = _plotdb.begin();
+   while (outer != _plotdb.end()) {
+      auto inner = _plotdb.begin();
+      while (inner != _plotdb.end()) {
+         if (outer->latitude == inner->latitude && outer->longitude == inner->longitude && outer->drone_id == inner->drone_id && outer->node_id != inner->node_id) {
+            std::cout << "Removing duplicate\n";
+            std::cout << inner->timestamp;
+            if (inner->node_id == masterNode) {
+               updateOffset(outer->node_id, inner->timestamp - outer->timestamp);
+            }
+            else if (outer->node_id == masterNode) {
+               updateOffset(inner->node_id, outer->timestamp - inner->timestamp);
+            }
+            inner = _plotdb.erase(inner);
          }
-         in++;
+         else { inner++; }
       }
-   out++;
-   innerLoc +=1;
+      outer++;
    }
 }
 
 
 void ReplServer::shutdown() {
    _shutdown = true;
+}
+
+int ReplServer::getOffset(int nodeID) {
+   return timeDiffs[nodeID];
+}
+
+void ReplServer::updateOffset(int nodeID, long skew) {
+   if (timeDiffs[nodeID] != skew) {
+      timeDiffs[nodeID] = skew;
+   }
+   std::cout << "Updating offset between master and " << nodeID << " to" << skew << "\n";
 }
