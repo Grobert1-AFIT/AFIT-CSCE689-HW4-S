@@ -454,7 +454,14 @@ void TCPConn::waitForData() {
       _data_ready = true;
 
       // Send the acknowledgement and disconnect
-      sendEncryptedData(c_ack);
+      std::vector<uint8_t> ackResp;
+      ackResp.insert(ackResp.end(), c_ack.begin(), c_ack.end());
+      std::cout << "Sending ACK: ";
+      for (auto & x : ackResp) {
+         std::cout << x;
+      }
+      std::cout << "\n";
+      sendEncryptedData(ackResp);
 
       if (_verbosity >= 2)
          std::cout << "Successfully received replication data from " << getNodeID() << "\n";

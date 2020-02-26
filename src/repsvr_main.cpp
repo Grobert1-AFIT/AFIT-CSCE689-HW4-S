@@ -180,10 +180,7 @@ int main(int argc, char *argv[]) {
       throw std::runtime_error("Unable to create replication server thread");
 
    // Sleep the duration of the simulation
-   sleep(sim_time / time_mult);
-
-   //Extra sleep to allow for final replication to be proccessed
-   sleep(10);
+   sleep((sim_time / time_mult) + 10);
 
    // Stop the replication server
    repl_server.shutdown();
