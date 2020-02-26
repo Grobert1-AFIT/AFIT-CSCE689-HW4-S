@@ -467,7 +467,7 @@ void TCPConn::waitForData() {
 
 
 /**********************************************************************************************
- * awaitAwk - waits for the awk that data was received and disconnects
+ * awaitAwk - waits for the ack that data was received and disconnects
  *
  *    Throws: socket_error for network issues, runtime_error for unrecoverable issues
  **********************************************************************************************/
@@ -478,8 +478,10 @@ void TCPConn::awaitAck() {
    if (_connfd.hasData()) {
       std::vector<uint8_t> buf;
 
-      if (!getEncryptedData(buf))
+      if (!getEncryptedData(buf)) {
+         std::cout << "Empty ACK String\n";
          return;
+      }
 
       if (findCmd(buf, c_ack) == buf.end())
       {

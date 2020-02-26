@@ -226,23 +226,22 @@ void ReplServer::addSingleDronePlot(std::vector<uint8_t> &data) {
          //Compare times
          auto timeDif = element.timestamp - tmp_plot.timestamp;
          //Duplicate Plots, update time differential
-         if (timeDif < 10.0) {
+         if (abs(timeDif) < 15.0) {
             if (tmp_plot.node_id == masterNode) {
-               std::cout << "Updating Time Differential";
+               std::cout << "Calling updateOffset\n";
                updateOffset(element.node_id, timeDif);
             }
             return;
          }
          //Same location but too large an offset to be duplicate
          else {
-               std::cout << "Adding because too large a time difference\n";
-               _plotdb.addPlot(tmp_plot.drone_id, tmp_plot.node_id, tmp_plot.timestamp, tmp_plot.latitude, tmp_plot.longitude);
+               _plotdb.addPlot(tmp_plot.drone_id, tmp_plot.node_id, tmp_plot.timestamp - getOffset(tmp_plot.node_id), tmp_plot.latitude, tmp_plot.longitude);
          }
       }
    }
 
    //Add the replication point if it isn't a possible duplicate
-   _plotdb.addPlot(tmp_plot.drone_id, tmp_plot.node_id, tmp_plot.timestamp, tmp_plot.latitude, tmp_plot.longitude);
+   _plotdb.addPlot(tmp_plot.drone_id, tmp_plot.node_id, tmp_plot.timestamp - getOffset(tmp_plot.node_id), tmp_plot.latitude, tmp_plot.longitude);
 }
 
 
@@ -252,15 +251,20 @@ void ReplServer::removeDuplicates() {
       auto inner = _plotdb.begin();
       while (inner != _plotdb.end()) {
          if (outer->latitude == inner->latitude && outer->longitude == inner->longitude && outer->drone_id == inner->drone_id && outer->node_id != inner->node_id) {
-            std::cout << "Removing duplicate\n";
-            std::cout << inner->timestamp;
-            if (inner->node_id == masterNode) {
-               updateOffset(outer->node_id, inner->timestamp - outer->timestamp);
+            auto timeDif = outer->timestamp - inner->timestamp;
+            if (abs(timeDif) < 15.0) {
+               std::cout << "Removing duplicate within database at time: ";
+               std::cout << inner->timestamp << "\n";
+               if (inner->node_id == masterNode) {
+                  auto skew = inner->timestamp - outer->timestamp;
+                  updateOffset(outer->node_id, skew);
+               }
+               else if (outer->node_id == masterNode) {
+                  auto skew = outer->timestamp - inner->timestamp;
+                  updateOffset(inner->node_id, skew);
+               }
+               inner = _plotdb.erase(inner);
             }
-            else if (outer->node_id == masterNode) {
-               updateOffset(inner->node_id, outer->timestamp - inner->timestamp);
-            }
-            inner = _plotdb.erase(inner);
          }
          else { inner++; }
       }
@@ -274,12 +278,14 @@ void ReplServer::shutdown() {
 }
 
 int ReplServer::getOffset(int nodeID) {
-   return timeDiffs[nodeID];
+   return timeDiffs[nodeID-1];
 }
 
 void ReplServer::updateOffset(int nodeID, long skew) {
-   if (timeDiffs[nodeID] != skew) {
-      timeDiffs[nodeID] = skew;
+   std::cout << "Comparing " << timeDiffs[nodeID-1] << " vs " << skew << "\n";
+   if (timeDiffs[nodeID-1] != skew) {
+      timeDiffs[nodeID-1] = skew;
+      std::cout << "Updating offset between master and " << nodeID << " to " << skew << "\n";
    }
-   std::cout << "Updating offset between master and " << nodeID << " to" << skew << "\n";
+   
 }
