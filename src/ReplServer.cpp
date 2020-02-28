@@ -240,12 +240,14 @@ void ReplServer::addSingleDronePlot(std::vector<uint8_t> &data) {
          //Same location but too large an offset to be duplicate
          else {
                _plotdb.addPlot(tmp_plot.drone_id, tmp_plot.node_id, tmp_plot.timestamp - getOffset(tmp_plot.node_id), tmp_plot.latitude, tmp_plot.longitude);
+               tmp_plot.setFlags(DBFLAG_SYNCD);
          }
       }
    }
 
    //Add the replication point if it isn't a possible duplicate
    _plotdb.addPlot(tmp_plot.drone_id, tmp_plot.node_id, tmp_plot.timestamp - getOffset(tmp_plot.node_id), tmp_plot.latitude, tmp_plot.longitude);
+   tmp_plot.setFlags(DBFLAG_SYNCD);
 }
 
 //Function that will iterate over all items in the database and remove duplicate entries
