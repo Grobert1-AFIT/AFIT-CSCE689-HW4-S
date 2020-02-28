@@ -239,14 +239,14 @@ void ReplServer::addSingleDronePlot(std::vector<uint8_t> &data) {
          }
          //Same location but too large an offset to be duplicate
          else {
-               _plotdb.addPlot(tmp_plot.drone_id, tmp_plot.node_id, tmp_plot.timestamp - getOffset(tmp_plot.node_id), tmp_plot.latitude, tmp_plot.longitude);
+               _plotdb.addPlot(tmp_plot.drone_id, tmp_plot.node_id, tmp_plot.timestamp + getOffset(tmp_plot.node_id), tmp_plot.latitude, tmp_plot.longitude);
                tmp_plot.setFlags(DBFLAG_SYNCD);
          }
       }
    }
 
    //Add the replication point if it isn't a possible duplicate
-   _plotdb.addPlot(tmp_plot.drone_id, tmp_plot.node_id, tmp_plot.timestamp - getOffset(tmp_plot.node_id), tmp_plot.latitude, tmp_plot.longitude);
+   _plotdb.addPlot(tmp_plot.drone_id, tmp_plot.node_id, tmp_plot.timestamp + getOffset(tmp_plot.node_id), tmp_plot.latitude, tmp_plot.longitude);
    tmp_plot.setFlags(DBFLAG_SYNCD);
 }
 
@@ -306,7 +306,7 @@ void ReplServer::updateSkewDB() {
          //We have a non-zero skew value
          if (getOffset(plot.node_id) != 0) {
             //Modify time-stamp by known skew and set sync'd flag
-            plot.timestamp = plot.timestamp - getOffset(plot.node_id);
+            plot.timestamp = plot.timestamp + getOffset(plot.node_id);
             plot.setFlags(DBFLAG_SYNCD);
          }
       }
