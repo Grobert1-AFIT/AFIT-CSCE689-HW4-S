@@ -94,6 +94,7 @@ bool TCPConn::accept(SocketFD &server) {
    _status = s_connected;
    _connected = true;
    return results;
+   _connfd.setNonBlocking();
 }
 
 /**********************************************************************************************
@@ -456,11 +457,6 @@ void TCPConn::waitForData() {
       // Send the acknowledgement and disconnect
       std::vector<uint8_t> ackResp;
       ackResp.insert(ackResp.end(), c_ack.begin(), c_ack.end());
-      std::cout << "Sending ACK: ";
-      for (auto & x : ackResp) {
-         std::cout << x;
-      }
-      std::cout << "\n";
       sendEncryptedData(ackResp);
 
       if (_verbosity >= 2)
@@ -481,7 +477,7 @@ void TCPConn::waitForData() {
 
 void TCPConn::awaitAck() {
 
-   // Should have the awk message
+   // Should have the ack message
    if (_connfd.hasData()) {
       std::vector<uint8_t> buf;
 
@@ -694,6 +690,7 @@ void TCPConn::connect(const char *ip_addr, unsigned short port) {
       throw socket_error("TCP Connection failed!");
 
    _connected = true;
+   _connfd.setNonBlocking();
 }
 
 // Same as above, but ip_addr and port are in network (big endian) format
@@ -705,6 +702,7 @@ void TCPConn::connect(unsigned long ip_addr, unsigned short port) {
       throw socket_error("TCP Connection failed!");
 
    _connected = true;
+   _connfd.setNonBlocking();
 }
 
 /**********************************************************************************************

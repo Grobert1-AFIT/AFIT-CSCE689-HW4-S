@@ -37,11 +37,11 @@ public:
    //Server time offset
    int getOffset(int);
    void updateOffset(int, long);
-   void updatedbTimes();
+   void updateSkewDB();
 
 private:
 
-   std::vector<int> timeDiffs = {0,0,0};
+   std::vector<int> timeDiffs = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
 
    //What server is the authoritative time?
    unsigned int masterNode = 1;

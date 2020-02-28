@@ -110,6 +110,7 @@ void ReplServer::replicate() {
 
       usleep(1000);
    }   
+   std::cout << "Shutting down replication";
 }
 
 /**********************************************************************************************
@@ -168,6 +169,7 @@ unsigned int ReplServer::queueNewPlots() {
       std::cout << "Queued up " << count << " plots to be replicated.\n";
 
    removeDuplicates();
+   updateSkewDB();
 
    return count;
 }
@@ -220,6 +222,9 @@ void ReplServer::addSingleDronePlot(std::vector<uint8_t> &data) {
 
    tmp_plot.deserialize(data);
 
+   //If new node is seen that has lower nodeID (default 1)
+   if (tmp_plot.node_id < masterNode) { masterNode = tmp_plot.node_id; }
+
    //Need to check for duplicate points before adding
    for (auto & element : _plotdb) {
       if (element.latitude == tmp_plot.latitude && element.longitude == tmp_plot.longitude && element.drone_id == tmp_plot.drone_id) {
@@ -228,7 +233,6 @@ void ReplServer::addSingleDronePlot(std::vector<uint8_t> &data) {
          //Duplicate Plots, update time differential
          if (abs(timeDif) < 15.0) {
             if (tmp_plot.node_id == masterNode) {
-               std::cout << "Calling updateOffset\n";
                updateOffset(element.node_id, timeDif);
             }
             return;
@@ -244,7 +248,7 @@ void ReplServer::addSingleDronePlot(std::vector<uint8_t> &data) {
    _plotdb.addPlot(tmp_plot.drone_id, tmp_plot.node_id, tmp_plot.timestamp - getOffset(tmp_plot.node_id), tmp_plot.latitude, tmp_plot.longitude);
 }
 
-
+//Function that will iterate over all items in the database and remove duplicate entries
 void ReplServer::removeDuplicates() {
    auto outer = _plotdb.begin();
    while (outer != _plotdb.end()) {
@@ -252,9 +256,8 @@ void ReplServer::removeDuplicates() {
       while (inner != _plotdb.end()) {
          if (outer->latitude == inner->latitude && outer->longitude == inner->longitude && outer->drone_id == inner->drone_id && outer->node_id != inner->node_id) {
             auto timeDif = outer->timestamp - inner->timestamp;
-            if (abs(timeDif) < 15.0) {
+            if (abs(timeDif) < 10.0) {
                std::cout << "Removing duplicate within database at time: ";
-               std::cout << inner->timestamp << "\n";
                if (inner->node_id == masterNode) {
                   auto skew = inner->timestamp - outer->timestamp;
                   updateOffset(outer->node_id, skew);
@@ -265,6 +268,7 @@ void ReplServer::removeDuplicates() {
                }
                inner = _plotdb.erase(inner);
             }
+            else { inner++; }
          }
          else { inner++; }
       }
@@ -277,15 +281,38 @@ void ReplServer::shutdown() {
    _shutdown = true;
 }
 
+//Returns the stored skew between master and given nodeID
 int ReplServer::getOffset(int nodeID) {
-   return timeDiffs[nodeID-1];
+   if (timeDiffs[nodeID]){ return timeDiffs[nodeID]; }
+   return 0;
 }
 
+
+//Updates the time skew between the chosen master and given nodeID
 void ReplServer::updateOffset(int nodeID, long skew) {
    std::cout << "Comparing " << timeDiffs[nodeID-1] << " vs " << skew << "\n";
-   if (timeDiffs[nodeID-1] != skew) {
-      timeDiffs[nodeID-1] = skew;
-      std::cout << "Updating offset between master and " << nodeID << " to " << skew << "\n";
+   if (timeDiffs[nodeID]) {
+      if (timeDiffs[nodeID] != skew) {
+       timeDiffs[nodeID] = skew;
+       std::cout << "Updating offset between master and " << nodeID << " to " << skew << "\n";
+    }
    }
+   else { std::cout << "Unknown NodeID\n"; }
    
 }
+
+void ReplServer::updateSkewDB() {
+   //Iterate over plotDB
+   for (auto & plot : _plotdb) {
+      //See if plot hasn't been synced
+      if (!plot.isFlagSet(DBFLAG_SYNCD)) {
+         //We have a non-zero skew value
+         if (getOffset(plot.node_id) != 0) {
+            //Modify time-stamp by known skew and set sync'd flag
+            plot.timestamp = plot.timestamp - getOffset(plot.node_id);
+            plot.setFlags(DBFLAG_SYNCD);
+         }
+      }
+   }
+}
+
