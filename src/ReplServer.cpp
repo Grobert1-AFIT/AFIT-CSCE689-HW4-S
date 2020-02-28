@@ -259,7 +259,6 @@ void ReplServer::removeDuplicates() {
          if (outer->latitude == inner->latitude && outer->longitude == inner->longitude && outer->drone_id == inner->drone_id && outer->node_id != inner->node_id) {
             auto timeDif = outer->timestamp - inner->timestamp;
             if (abs(timeDif) < 10.0) {
-               std::cout << "Removing duplicate within database at time: ";
                if (inner->node_id == masterNode) {
                   auto skew = inner->timestamp - outer->timestamp;
                   updateOffset(outer->node_id, skew);
@@ -292,15 +291,11 @@ int ReplServer::getOffset(int nodeID) {
 
 //Updates the time skew between the chosen master and given nodeID
 void ReplServer::updateOffset(int nodeID, long skew) {
-   std::cout << "Comparing " << timeDiffs[nodeID-1] << " vs " << skew << "\n";
-   if (timeDiffs[nodeID]) {
-      if (timeDiffs[nodeID] != skew) {
-       timeDiffs[nodeID] = skew;
-       std::cout << "Updating offset between master and " << nodeID << " to " << skew << "\n";
-    }
+   std::cout << "Comparing " << timeDiffs[nodeID] << " vs " << skew << "\n";
+   if (timeDiffs[nodeID] != skew) {
+      timeDiffs[nodeID] = skew;
+      std::cout << "Updating offset between master and " << nodeID << " to " << skew << "\n";
    }
-   else { std::cout << "Unknown NodeID\n"; }
-   
 }
 
 void ReplServer::updateSkewDB() {
