@@ -109,7 +109,10 @@ void ReplServer::replicate() {
       }       
 
       usleep(1000);
-   }   
+   }
+   //Check the DB one last time for inconsistencies
+   removeDuplicates();
+   updateSkewDB();
    std::cout << "Shutting down replication";
 }
 
@@ -168,6 +171,7 @@ unsigned int ReplServer::queueNewPlots() {
    if (_verbosity >= 2) 
       std::cout << "Queued up " << count << " plots to be replicated.\n";
 
+   //Functions to ensure DB consistency
    removeDuplicates();
    updateSkewDB();
 
